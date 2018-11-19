@@ -1,0 +1,155 @@
+//SIZZLEX .txt Tracker 2D Tracks To PF
+@[
+
+// Generates tracker data for exportable trackers, both 2-D and 3-D
+//	into a simple relational data format.
+// EXTRA points are also included on demand.
+//	This lets you generate pseudo-2D trackers anywhere in 3-D
+// (c)2005 Andersson Technologies LLC
+
+//	@Author: Liwei
+//	@Date: 2018.11.01
+
+// 安装说明：
+// 复制export_2Dtrack_to_pf.szl 到 systheyes的脚本目录 C:\Program Files\Andersson Technologies LLC\SynthEyes\scripts
+//打开systheye程序， 从菜单 file》 export》 Tracker 2D tracks to PF   可以导出一个txt文件
+//然后在pftrack中新建一个usertrack节点，在节点中使用import命令，将之前从systheyes中导出的txt文件导入即可
+
+
+
+obj = Scene.activeObj
+cam = obj.cam
+shot = obj.shot
+
+dlg = NewDialog("trkwpath")
+dlg.Int("start", "First Frame", 0,  shot.start, 10000)
+dlg.Int("stop", "Last Frame", 0, shot.stop, 10000)
+dlg.Int("offset", "Frame Offset", -10000, 0, 10000)
+dlg.Float("uscl", "U Horizontal Scaling", -5000, 1.0, 5000)
+dlg.Float("vscl", "V Vertical Scaling", -5000, 1.0, 5000)
+dlg.Float("uoff", "U Horizontal Offset", -5000, 0, 5000)
+dlg.Float("voff", "V Vertical Offset", -5000, 0, 5000)
+dlg.Check("missing", "Even when missing", 0)
+///dlg.Check("outcome", "Include outcome codes", 1)
+dlg.Check("tracks2D", "2-D Tracks", 1)
+///dlg.Check("tracks3D", "3-D Tracks", 0)
+///dlg.String("suffix", "Suffix for 3-D", "_3D")
+///dlg.Check("extras", "Extra Points", 1)
+dlg.Show()
+
+start = dlg.start
+stop = dlg.stop
+frmoff = dlg.offset
+uscl = dlg.uscl
+vscl = dlg.vscl
+uoff = dlg.uoff
+voff = dlg.voff
+missing = dlg.missing
+outcome = dlg.outcome
+suffix = dlg.suffix
+
+printf("# \"Name\"\n")
+printf("# clipNumber\n")
+printf("# frameCount\n")
+printf("# frame, xpos, ypos, similarity\n")
+
+for (tk in obj.trk)
+    ltknm = NM(tk.nm)
+    if (tk.isExported)
+		if (dlg.tracks2D)
+			"\n"
+			printf("\"%s\"\n", ltknm)
+			printf("1\n")
+			vaild_number = 0
+			for (frame = start; frame <= stop; frame++)
+				if (tk.valid)
+					vaild_number +=1
+				end
+			end
+			printf(vaild_number)
+			"\n"
+			
+			
+			for (frame = start; frame <= stop; frame++)
+				if (tk.valid || missing)
+					t_2dx = ((uscl*tk.u+uoff+1)/2.0)*shot.rawWidth
+					t_2dy = (abs(vscl*tk.v+voff-1)/2.0)*shot.rawHeight
+					printf("%d %f %f", frame+frmoff, 
+					t_2dx, t_2dy)
+					if (outcome)
+						printf(" %d", tk.outcome)
+					end
+				"\n"
+				end
+	    end
+	end
+	
+	if (dlg.tracks3D && tk.isSolved)
+	    for (frame = start; frame <= stop; frame++)
+			if (Map3D(tk.wx, tk.wy, tk.wz) > 0)
+				printf("%s %d %f %f", ltknm suffix, frame+frmoff, 
+				uscl*mapx+uoff, vscl*mapy+voff)
+				if (outcome)
+					printf(" %d", 15)
+				end
+				"\n"
+			end
+	    end
+	end
+    end
+end
+
+if (dlg.extras)
+    for (xt in Extra)
+	lxtnm = NM(xt.nm)
+		for (frame = start; frame <= stop; frame++)
+			if (Map3D(xt.x, xt.y, xt.z) > 0)
+			printf("%s %d %f %f", lxtnm, frame+frmoff, 
+				uscl*mapx+uoff, vscl*mapy+voff)
+				if (outcome)
+					printf(" %d", 15)
+				end
+			"\n"
+			end
+		end
+    end
+end
+
+function Map3D(px, py, pz)
+    scl = 1 / tan(0.5*cam.fov)
+    asp = shot.aspect
+
+    mpx = -(cam.ax*cam.x + cam.ay*cam.y + cam.az*cam.z)
+    mpy = -(cam.bx*cam.x + cam.by*cam.y + cam.bz*cam.z)
+    mpz = -(cam.cx*cam.x + cam.cy*cam.y + cam.cz*cam.z)
+
+    camu = scl*(cam.ax*px + cam.ay*py + cam.az*pz + mpx)
+    camv = -scl*asp*(cam.bx*px + cam.by*py + cam.bz*pz + mpy)
+    camw = -(cam.cx*px + cam.cy*py + cam.cz*pz + mpz)
+    if (camw <= 0)
+	return 0	// behind the camera
+    end
+
+    u = camu / camw
+    v = camv / camw
+
+    lnf = 1 + cam.distortion*(asp*asp*u*u + v*v)
+    mapx = u*lnf
+    mapy = v*lnf
+    return 1
+end
+
+// Change spaces and anything else problematic to underscore, makes
+//	everybody's scripts easier.
+
+function NM(orinm)
+    newname = ""
+    for (chno = 1; chno <= length(orinm); chno++)
+	chr = substr(orinm, chno, 1)
+	if (chr == " " || chr == "\t")
+	    chr = "_"
+	end
+	newname = (newname chr)
+    end
+    return newname
+end
